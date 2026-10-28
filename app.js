@@ -99,6 +99,66 @@ const state = {
 // Coming back to a half-logged workout should land on it.
 state.tab = hasDraft(state.draft) ? 'log' : 'history'
 
+/* ------------------------------------------------------------ backup nudge */
+
+// The data lives only on this phone, so a backup older than a week gets a
+// banner on History. iOS gives a home-screen app no way to notify without a
+// server, so the reminder is in the app rather than on the lock screen.
+const BACKUP_KEY = 'lift.lastBackup'
+const SNOOZE_KEY = 'lift.backupSnooze'
+const DAY = 86400000
+const BACKUP_EVERY = 7 * DAY
+
+function readTime(key) {
+  try {
+    return Number(localStorage.getItem(key)) || 0
+  } catch {
+    return 0
+  }
+}
+
+function writeTime(key, t) {
+  try {
+    localStorage.setItem(key, String(t))
+  } catch {
+    /* blocked storage — the nudge just comes back sooner */
+  }
+}
+
+/** How stale the backup is, or null when no nudge is due. */
+function backupDue() {
+  if (!state.all.length) return null
+  const now = Date.now()
+  if (readTime(SNOOZE_KEY) > now) return null
+  const last = readTime(BACKUP_KEY)
+  // Never backed up: the clock starts at the oldest workout, not at install,
+  // so a first session logged today is not nagged about straight away.
+  const since = last || Math.min(...state.all.map((w) => Date.parse(w.createdAt) || now))
+  return now - since >= BACKUP_EVERY ? { last, days: Math.floor((now - since) / DAY) } : null
+}
+
+function backupAgo() {
+  const last = readTime(BACKUP_KEY)
+  if (!last) return 'never'
+  const days = Math.floor((Date.now() - last) / DAY)
+  return days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`
+}
+
+function nudgeView() {
+  const due = backupDue()
+  if (!due) return ''
+  const msg = due.last
+    ? `Your last backup was ${plural(due.days, 'day')} ago.`
+    : `You haven't backed up yet. Right now this phone holds the only copy of your workouts.`
+  return `<div class="nudge mb">
+    <p class="body">${msg}</p>
+    <div class="row mt-s">
+      <button class="btn sm solid" data-action="export">Back up now</button>
+      <button class="btn sm quiet" data-action="snooze">Remind me tomorrow</button>
+    </div>
+  </div>`
+}
+
 function commit(list) {
   state.all = list
   if (!store.persist(list)) toast('Could not save — the phone is out of storage for this app')
@@ -174,7 +234,7 @@ function workoutRow(w) {
 
 function historyView() {
   const resume = hasDraft(state.draft)
-  return `<div class="mb">
+  return `${nudgeView()}<div class="mb">
       <button class="btn solid lg full" data-action="tab" data-tab="log">
         ${resume ? 'Continue workout' : `${I.plus(16)} Log a workout`}
       </button>
@@ -300,6 +360,7 @@ function backupView() {
   return `<div class="panel pad stack" style="gap:14px">
     <p class="body">Your workouts live only on this phone — <span class="tnum">${plural(state.all.length, 'session')}</span> right now.
       Export a backup now and then and keep it in Files or iCloud Drive.</p>
+    <p class="small faint">Last backup: <span class="mute">${backupAgo()}</span>. History reminds you once it's a week old.</p>
     <div class="row wrap">
       <button class="btn solid" data-action="export" ${state.all.length ? '' : 'disabled'}>Export backup</button>
       <button class="btn" data-action="import">Import a file</button>
@@ -399,8 +460,9 @@ async function exportBackup() {
   if (navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: name })
-      return
+      return backedUp()
     } catch (e) {
+      // Closing the share sheet is not a backup, so the nudge stays.
       if (e.name === 'AbortError') return
     }
   }
@@ -409,6 +471,14 @@ async function exportBackup() {
   a.download = name
   a.click()
   setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  backedUp()
+}
+
+function backedUp() {
+  writeTime(BACKUP_KEY, Date.now())
+  writeTime(SNOOZE_KEY, 0)
+  render()
+  toast('Backup saved')
 }
 
 async function importFile(file) {
@@ -526,6 +596,10 @@ const actions = {
   },
   save,
   export: exportBackup,
+  snooze: () => {
+    writeTime(SNOOZE_KEY, Date.now() + DAY)
+    render()
+  },
   import: () => document.getElementById('import-file').click(),
 }
 
