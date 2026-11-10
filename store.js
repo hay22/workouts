@@ -4,6 +4,10 @@
 // rules can be checked without a browser.
 
 const KEY = 'lift.workouts'
+// Standing notes per exercise ("seat on 4", "elbows tucked"), shown during
+// any session that has that exercise. Kept under their own key so the
+// workout list itself is never rewritten to hold them.
+const NOTES_KEY = 'lift.exerciseNotes'
 
 /* --------------------------------------------------------------- storage */
 
@@ -23,6 +27,24 @@ export function load() {
 export function persist(list) {
   try {
     localStorage.setItem(KEY, JSON.stringify(list))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Exercise notes as { [lowercased name]: text }. Missing or broken reads as empty. */
+export function loadExerciseNotes() {
+  try {
+    return normalizeExerciseNotes(JSON.parse(localStorage.getItem(NOTES_KEY) || 'null'))
+  } catch {
+    return {}
+  }
+}
+
+export function persistExerciseNotes(notes) {
+  try {
+    localStorage.setItem(NOTES_KEY, JSON.stringify(notes))
     return true
   } catch {
     return false
@@ -195,6 +217,32 @@ export function compare(all, workout) {
   }
 }
 
+/* -------------------------------------------------------- exercise notes */
+
+const noteKey = (name) => String(name || '').trim().toLowerCase()
+
+export function normalizeExerciseNotes(raw) {
+  const out = {}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out
+  for (const [name, text] of Object.entries(raw)) {
+    const k = noteKey(name)
+    if (k && typeof text === 'string' && text.trim()) out[k] = text.slice(0, 2000)
+  }
+  return out
+}
+
+export const noteFor = (notes, name) => notes[noteKey(name)] || ''
+
+/** Sets one exercise's note; empty text removes it. */
+export function setNote(notes, name, text) {
+  const k = noteKey(name)
+  const next = { ...notes }
+  if (!k) return next
+  if (String(text || '').trim()) next[k] = String(text).slice(0, 2000)
+  else delete next[k]
+  return next
+}
+
 /* --------------------------------------------------------------- writing */
 
 /** Validates one workout. Throws with a message fit to show. */
@@ -225,8 +273,17 @@ export const deleteWorkout = (all, id) => all.filter((w) => w.id !== id)
 
 /* -------------------------------------------------------- import/export */
 
-export function exportData(all) {
-  return { app: 'workouts', version: 1, exportedAt: new Date().toISOString(), workouts: all }
+export function exportData(all, exerciseNotes = {}) {
+  return { app: 'workouts', version: 1, exportedAt: new Date().toISOString(), workouts: all, exerciseNotes }
+}
+
+/**
+ * Exercise notes from a backup, merged over the ones here: an exercise in the
+ * file wins, one only on the phone is kept. Older backups have none.
+ */
+export function importExerciseNotes(current, data) {
+  const incoming = Array.isArray(data) ? {} : normalizeExerciseNotes(data?.exerciseNotes)
+  return { merged: { ...current, ...incoming }, count: Object.keys(incoming).length }
 }
 
 /**

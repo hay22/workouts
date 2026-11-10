@@ -5,7 +5,7 @@
 //
 // Bump VERSION whenever the file list changes.
 
-const VERSION = 'workouts-v2'
+const VERSION = 'workouts-v3'
 const FILES = [
   './',
   'index.html',

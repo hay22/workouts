@@ -50,6 +50,7 @@ const I = {
   flag: (s) => svg('<path d="M6 21V4M6 5h11l-2 3.5L17 12H6"/>', s),
   up: (s) => svg('<path d="M12 19V5M6 11l6-6 6 6"/>', s),
   down: (s) => svg('<path d="M12 5v14M6 13l6 6 6-6"/>', s),
+  note: (s) => svg('<path d="M6 3h9l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M8.5 13h7M8.5 17h5"/>', s),
 }
 
 function delta(value) {
@@ -91,6 +92,7 @@ const hasDraft = (d) => !!d.type || d.blocks.some((b) => b.name || b.sets.length
 
 const state = {
   all: store.load(),
+  exNotes: store.loadExerciseNotes(),
   draft: loadDraft(),
   tab: 'history',
   open: null, // the expanded workout in History
@@ -157,6 +159,17 @@ function nudgeView() {
       <button class="btn sm quiet" data-action="snooze">Remind me tomorrow</button>
     </div>
   </div>`
+}
+
+function commitNotes(notes) {
+  state.exNotes = notes
+  if (!store.persistExerciseNotes(notes)) toast('Could not save notes — the phone is out of storage for this app')
+}
+
+/** The open/closed note button on an exercise card; a dot means a note is waiting. */
+function noteBtnInner(b) {
+  const has = !!store.noteFor(state.exNotes, b.name)
+  return `${I.note(15)}${has && !b.showNote ? '<span class="dot"></span>' : ''}`
 }
 
 function commit(list) {
@@ -270,8 +283,17 @@ function blockView(b, i, prefill, unused) {
     <div class="row">
       <input class="field grow" list="ex-list" data-field="ex-name" data-i="${i}" value="${h(b.name)}"
         placeholder="Exercise" autocapitalize="words" autocomplete="off" />
+      <button class="icon-btn note-btn ${b.showNote ? 'on' : ''}" data-action="toggle-note" data-i="${i}"
+        aria-label="${b.showNote ? 'Hide notes' : 'Show notes'}" aria-expanded="${!!b.showNote}">${noteBtnInner(b)}</button>
       <button class="icon-btn" data-action="remove-block" data-i="${i}" aria-label="Remove exercise">${I.x(15)}</button>
     </div>
+    ${
+      b.showNote
+        ? `<textarea class="field mt-s" rows="2" data-field="ex-note" data-i="${i}"
+            placeholder="${b.name ? `Notes for ${h(b.name)} — seat height, grip, cues…` : 'Name the exercise first'}"
+            ${b.name.trim() ? '' : 'disabled'}>${h(store.noteFor(state.exNotes, b.name))}</textarea>`
+        : ''
+    }
     <div class="chips mt-s" data-chips="${i}" ${b.name || !unused.length ? 'hidden' : ''}>
       ${unused.map((n) => `<button class="chip" data-action="pick-ex" data-i="${i}" data-name="${h(n)}">${h(n)}</button>`).join('')}
     </div>
@@ -452,7 +474,7 @@ function save() {
 }
 
 async function exportBackup() {
-  const json = JSON.stringify(store.exportData(state.all), null, 2)
+  const json = JSON.stringify(store.exportData(state.all, state.exNotes), null, 2)
   const name = `workouts-${todayKey()}.json`
   const file = new File([json], name, { type: 'application/json' })
   // The share sheet is the reliable route on an iPhone ("Save to Files");
@@ -485,9 +507,11 @@ async function importFile(file) {
   try {
     const data = JSON.parse(await file.text())
     const r = store.importData(state.all, data, todayKey())
+    const n = store.importExerciseNotes(state.exNotes, data)
     commit(r.list)
+    if (n.count) commitNotes(n.merged)
     toast(
-      `Imported: ${r.added} new, ${r.updated} updated${r.skipped ? `, ${r.skipped} skipped (no date or no sets)` : ''}`,
+      `Imported: ${r.added} new, ${r.updated} updated${r.skipped ? `, ${r.skipped} skipped (no date or no sets)` : ''}${n.count ? `, ${plural(n.count, 'exercise note')}` : ''}`,
     )
     render()
   } catch (e) {
@@ -573,6 +597,13 @@ const actions = {
     render()
     focusField('ex-name', state.draft.blocks.length - 1)
   },
+  'toggle-note': (el) => {
+    const i = Number(el.dataset.i)
+    const b = state.draft.blocks[i]
+    setBlock(i, { ...b, showNote: !b.showNote })
+    render()
+    if (!b.showNote && b.name.trim()) focusField('ex-note', i)
+  },
   'remove-block': (el) => {
     const i = Number(el.dataset.i)
     const b = state.draft.blocks[i]
@@ -618,6 +649,9 @@ app.addEventListener('input', (e) => {
 
   if (field === 'date') patchDraft({ date: el.value || todayKey() })
   else if (field === 'notes') patchDraft({ notes: el.value })
+  else if (field === 'ex-note') {
+    commitNotes(store.setNote(state.exNotes, state.draft.blocks[i].name, el.value))
+  }
   else if (field === 'newType') {
     patchDraft({ newType: el.value })
     app.querySelector('[data-action="use-type"]').disabled = !el.value.trim()
@@ -627,6 +661,15 @@ app.addEventListener('input', (e) => {
     app.querySelector(`[data-action="add-set"][data-i="${i}"]`).disabled = !el.value
   } else if (field === 'ex-name') {
     setBlock(i, { ...state.draft.blocks[i], name: el.value })
+    // The note follows the name, so an open note box shows that exercise's.
+    const b = state.draft.blocks[i]
+    app.querySelector(`[data-action="toggle-note"][data-i="${i}"]`).innerHTML = noteBtnInner(b)
+    const note = app.querySelector(`[data-field="ex-note"][data-i="${i}"]`)
+    if (note) {
+      note.value = store.noteFor(state.exNotes, b.name)
+      note.disabled = !b.name.trim()
+      note.placeholder = b.name.trim() ? `Notes for ${b.name} — seat height, grip, cues…` : 'Name the exercise first'
+    }
     const prior = (sugg().prefill[state.draft.type] || {})[el.value] || null
     app.querySelector(`[data-hint="${i}"]`).innerHTML = priorHint(prior)
     const chips = app.querySelector(`[data-chips="${i}"]`)

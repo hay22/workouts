@@ -342,6 +342,23 @@ button.chip {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+.note-btn {
+  position: relative;
+}
+.note-btn.on {
+  border-color: rgba(237, 234, 227, 0.25);
+  color: var(--bone);
+}
+.note-btn .dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--bone);
+}
+
 button.set svg {
   opacity: 0.5;
 }

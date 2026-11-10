@@ -5,8 +5,11 @@ no build step. Everything is stored on the phone; nothing is sent anywhere.
 
 - **Log** a workout by type, with the starting weight pre-filled from the
   heaviest set in your last three sessions of that type.
+- **Exercise notes**: tap the note button on an exercise while logging to see
+  or write its notes (seat height, grip, cues). They come back every time that
+  exercise does.
 - **History** compares each session with the previous one of the same type.
-- **Backup** exports and imports a JSON file (Headquarters' `/api/workouts`
+- **Backup** exports and imports a JSON file, exercise notes included (Headquarters' `/api/workouts`
   output imports too).
 
 ## Running it locally
