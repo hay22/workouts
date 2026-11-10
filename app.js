@@ -711,5 +711,16 @@ render()
 navigator.storage?.persist?.().catch(() => {})
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  // When a new version takes over, reload once so it shows now rather than on
+  // the next launch. Skipped on a first install, when nothing was in control.
+  if (navigator.serviceWorker.controller) {
+    let reloaded = false
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded) return
+      reloaded = true
+      saveDraft()
+      location.reload()
+    })
+  }
   navigator.serviceWorker.register('sw.js').catch(() => {})
 }

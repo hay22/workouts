@@ -5,7 +5,7 @@
 //
 // Bump VERSION whenever the file list changes.
 
-const VERSION = 'workouts-v3'
+const VERSION = 'workouts-v4'
 const FILES = [
   './',
   'index.html',
@@ -21,7 +21,11 @@ const FILES = [
 ]
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()))
+  // cache: 'reload' skips the browser's HTTP cache. GitHub Pages lets files be
+  // cached for ten minutes, so without it a new version could be installed
+  // holding the old files.
+  const fresh = FILES.map((f) => new Request(f, { cache: 'reload' }))
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(fresh)).then(() => self.skipWaiting()))
 })
 
 self.addEventListener('activate', (e) => {
@@ -42,7 +46,7 @@ self.addEventListener('fetch', (e) => {
       // Any page load is the app shell; there is only one page.
       const key = req.mode === 'navigate' ? './' : req
       const hit = await cache.match(key, { ignoreSearch: true })
-      const fresh = fetch(req)
+      const fresh = fetch(req, { cache: 'no-cache' })
         .then((res) => {
           if (res.ok) cache.put(key, res.clone())
           return res
