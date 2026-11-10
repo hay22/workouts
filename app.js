@@ -281,7 +281,7 @@ function blockView(b, i, prefill, unused) {
   const weight = b.draftWeight ?? (prior ? String(prior.weight) : '')
   return `<div class="card" data-block="${i}">
     <div class="row">
-      <input class="field grow" list="ex-list" data-field="ex-name" data-i="${i}" value="${h(b.name)}"
+      <input class="field grow" data-field="ex-name" data-i="${i}" value="${h(b.name)}"
         placeholder="Exercise" autocapitalize="words" autocomplete="off" />
       <button class="icon-btn note-btn ${b.showNote ? 'on' : ''}" data-action="toggle-note" data-i="${i}"
         aria-label="${b.showNote ? 'Hide notes' : 'Show notes'}" aria-expanded="${!!b.showNote}">${noteBtnInner(b)}</button>
@@ -355,8 +355,7 @@ function logView() {
       <div class="row">
         <span class="body mute">${plural(d.blocks.length, 'exercise')} · <span class="tnum" style="color:var(--bone)">${num(total)} lb</span></span>
         <button class="btn solid right" data-action="save" ${ready ? '' : 'disabled'}>${editing ? 'Save changes' : 'Save workout'}</button>
-      </div>
-      <datalist id="ex-list">${typeExercises.map((e) => `<option value="${h(e)}"></option>`).join('')}</datalist>`
+      </div>`
   }
 
   const banner = editing
